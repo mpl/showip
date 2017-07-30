@@ -3,10 +3,8 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -18,13 +16,11 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/mpl/basicauth"
-	"golang.org/x/crypto/acme/autocert"
+	"github.com/mpl/simpletls"
 )
 
 const (
@@ -37,16 +33,12 @@ var (
 	help         = flag.Bool("h", false, "show this help")
 	flagUserpass = flag.String("userpass", "", "optional username:password protection")
 	flagTLS      = flag.Bool("tls", false, `For https. If "key.pem" or "cert.pem" are not found in $HOME/keys/, in-memory self-signed are generated and used instead.`)
-	flagAutocert = flag.Bool("autocert", false, `Get https certificate from Let's Encrypt. Implies -tls=true. Obviously -host must contain a full qualified domain name. The cached certificate(s) will be in $HOME/keys/letsencrypt.cache.`)
 	upload       = flag.Bool("upload", false, "enable uploading at /upload")
 )
 
 var (
 	rootdir, _ = os.Getwd()
 	up         *basicauth.UserPass
-	tlsKey     = filepath.Join(os.Getenv("HOME"), "keys", "key.pem")
-	tlsCert    = filepath.Join(os.Getenv("HOME"), "keys", "cert.pem")
-	certCache  = filepath.Join(os.Getenv("HOME"), "keys", "letsencrypt.cache")
 )
 
 var (
@@ -141,52 +133,6 @@ func initUserPass() {
 	}
 }
 
-func setupTLS() (*tls.Config, error) {
-	hostname := *host
-	if strings.Contains(hostname, ":") {
-		h, _, err := net.SplitHostPort(hostname)
-		if err != nil {
-			return nil, err
-		}
-		hostname = h
-	}
-	if *flagAutocert {
-		m := autocert.Manager{
-			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(hostname),
-			Cache:      autocert.DirCache(certCache),
-		}
-		return &tls.Config{
-			GetCertificate: m.GetCertificate,
-		}, nil
-	}
-	_, statErr1 := os.Stat(tlsCert)
-	_, statErr2 := os.Stat(tlsKey)
-	var cert tls.Certificate
-	var err error
-	if statErr1 == nil && statErr2 == nil {
-		cert, err = tls.LoadX509KeyPair(tlsCert, tlsKey)
-	} else {
-		// generate in-memory certs
-		var certMem, keyMem bytes.Buffer
-		err = genSelfTLS(&certMem, &keyMem)
-		if err != nil {
-			return nil, err
-		}
-		cert, err = tls.X509KeyPair(certMem.Bytes(), keyMem.Bytes())
-	}
-	if err != nil {
-		return nil, fmt.Errorf("Failed to load TLS cert: %v", err)
-	}
-	return &tls.Config{
-		Rand:         rand.Reader,
-		Time:         time.Now,
-		NextProtos:   []string{"http/1.1"},
-		Certificates: []tls.Certificate{cert},
-	}, nil
-
-}
-
 func main() {
 	flag.Usage = usage
 	flag.Parse()
@@ -199,23 +145,21 @@ func main() {
 		usage()
 	}
 
-	listener, err := net.Listen("tcp", *host)
-	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", *host, err)
-	}
-
 	initUserPass()
 
-	if !*flagTLS && *flagAutocert {
+	if !*flagTLS && *simpletls.FlagAutocert {
 		*flagTLS = true
 	}
 
+	var err error
+	var listener net.Listener
 	if *flagTLS {
-		config, err := setupTLS()
-		if err != nil {
-			log.Fatalf("could not configure TLS connection: %v", err)
-		}
-		listener = tls.NewListener(listener, config)
+		listener, err = simpletls.Listen(*host)
+	} else {
+		listener, err = net.Listen("tcp", *host)
+	}
+	if err != nil {
+		log.Fatalf("Failed to listen on %s: %v", *host, err)
 	}
 
 	http.Handle("/recordip", makeHandler(recordRemoteAddrHandler))
