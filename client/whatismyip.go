@@ -13,12 +13,14 @@ import (
 	"time"
 )
 
-var flagInsecure = flag.Bool("insecure", false, "run with insecure TLS")
+var (
+	flagUsername = flag.String("user", "", "username")
+	flagPassword = flag.String("pass", "", "password")
+	flagInsecure = flag.Bool("insecure", false, "run with insecure TLS")
+)
 
 var (
-	sleepTime = time.Hour
-	username  = "foo"
-	password  = "bar"
+	sleepTime = 5 * time.Minute
 )
 
 func main() {
@@ -34,7 +36,7 @@ func main() {
 			log.Printf("could not prepare request: %v", err)
 			continue
 		}
-		req.SetBasicAuth(username, password)
+		req.SetBasicAuth(*flagUsername, *flagPassword)
 		cl := &http.Client{}
 		if *flagInsecure {
 			dialTLS := func(network, addr string) (net.Conn, error) {
