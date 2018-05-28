@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	uploadform = "upload.html"
-	idstring   = "http://golang.org/pkg/http/#ListenAndServe"
+	idstring = "http://golang.org/pkg/http/#ListenAndServe"
 )
 
 var (
@@ -25,15 +24,10 @@ var (
 	help         = flag.Bool("h", false, "show this help")
 	flagUserpass = flag.String("userpass", "", "optional username:password protection")
 	flagTLS      = flag.Bool("tls", false, `For https. If "key.pem" or "cert.pem" are not found in $HOME/keys/, in-memory self-signed are generated and used instead.`)
-	upload       = flag.Bool("upload", false, "enable uploading at /upload")
 )
 
 var (
-	rootdir, _ = os.Getwd()
-	up         *basicauth.UserPass
-)
-
-var (
+	up   *basicauth.UserPass
 	mu   sync.Mutex
 	joIP = "NOPE"
 )
@@ -57,7 +51,7 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 		if isAllowed(r) {
 			fn(w, r, title)
 		} else {
-			basicauth.SendUnauthorized(w, r, "simpleHttpd")
+			basicauth.SendUnauthorized(w, r, "showip")
 		}
 	}
 }
